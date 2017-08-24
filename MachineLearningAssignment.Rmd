@@ -1,0 +1,84 @@
+---
+title: "Predict the correctness of an exercise from accelerometer data" 
+author: "Sonal"
+date: "August 22, 2017"
+output: html_document
+---
+
+## Summary
+
+The goal of this project is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants as they perform barbell lifts correctly and incorrectly in 5 different ways and quantify how well they do it.
+
+More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+## Getting and Cleaning Data
+
+Download and read the training data file and the test data file.
+```{r, message=FALSE}
+library(caret)
+
+download.file("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",
+             destfile="pml-training.csv", mode="wb")
+download.file("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",
+              destfile="pml-testing.csv", mode="wb")
+trainData<-read.csv("pml-training.csv", na.strings=c("#DIV/0!","NA"))
+testData<-read.csv("pml-testing.csv", na.strings=c("#DIV/0!","NA"))
+dim(trainData)
+```
+
+Check what all features are given in the data and also check for columns with missing values
+```{r }
+colnames(trainData)
+missCols <- colSums(is.na(trainData))
+```
+
+Remove the first 7 columns which do not help us in data analysis and the columns with missing values
+```{r }
+trainData <- trainData[,complete.cases(t(trainData))]
+trainData <- trainData[, -c(1:7)]
+testData <- testData[,complete.cases(t(testData))]
+testData <- testData[, -c(1:7)]
+dim(trainData)
+```
+
+Split the data into training and validation set. (setseed to recreate same partition everytime)
+```{r}
+set.seed(20000)
+inTrain = createDataPartition(y=trainData$classe, p = 0.7,list=FALSE)
+training = trainData[inTrain,]
+testing = trainData[-inTrain,]
+```
+
+## Our Model
+This is a huge data set with lot of features. So, I think Random Forest is a good model for this dataset. With random forest we can get a good classification for all accelerometer readings. 'trainControl' is used to specify a resampling method. Here, I am using "repeatedcv". This method randomly splits the dataset into training and validation data. For each such split, the model is fit to the training data, and predictive accuracy is assessed using the validation data. The results are then averaged over the splits.
+```{r,message=FALSE}
+ctrl <- trainControl(method="repeatedcv", number=10, repeats=5)
+set.seed(20000)
+
+library(doParallel)
+cl <- makeCluster(detectCores()) 
+registerDoParallel(cl)
+
+model <- train(classe ~ ., data=training, method="rf", trControl=ctrl)
+```
+
+```{r}
+model
+```
+
+
+Plot the predicted values of classe variable for the test data set against the given values of classe variable to see the accuracy of our model
+```{r}
+qplot(predict(model,testing),classe,data=testing)
+```
+
+
+```{r}
+modelError <- confusionMatrix(predict(model, newdata=testing), testing$classe)
+modelError
+```
+
+Now we know that the model is 99% accurate so we predict the classe values for test data.
+```{r}
+predict(model,testData)
+```
